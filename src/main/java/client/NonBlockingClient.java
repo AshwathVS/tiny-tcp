@@ -71,13 +71,15 @@ public class NonBlockingClient implements Client {
         ByteBuffer frame = RequestEncoder.encode(req.path, req.headers, req.body);
 
         socketChannel.write(frame);
+        // Prepare to read a length-prefixed response next
+        key.attach(new ResponseAccumulator());
         key.interestOps(SelectionKey.OP_READ);
         return true;
     }
 
     private void read(SelectionKey key) throws IOException {
         var socketChannel = (SocketChannel) key.channel();
-        var buffer = ByteBuffer.allocate(1024);
+        var buffer = ByteBuffer.allocate(4096);
         int bytesRead = socketChannel.read(buffer);
 
         if (bytesRead == -1) {
@@ -85,9 +87,24 @@ public class NonBlockingClient implements Client {
             return;
         }
 
-        String response = new String(buffer.array(), 0, bytesRead);
-        log.info("Response from server: {}", response);
-        key.interestOps(SelectionKey.OP_WRITE);
+        buffer.flip();
+        ResponseAccumulator acc = (ResponseAccumulator) key.attachment();
+        if (acc == null) {
+            // Should not happen, but avoid NPEs
+            acc = new ResponseAccumulator();
+            key.attach(acc);
+        }
+        acc.append(buffer);
+
+        if (acc.isComplete()) {
+            String response = new String(acc.getBody(), StandardCharsets.UTF_8);
+            log.info("Response from server: {}", response);
+            key.attach(null);
+            key.interestOps(SelectionKey.OP_WRITE);
+        } else {
+            // keep reading
+            key.interestOps(SelectionKey.OP_READ);
+        }
     }
 
     private record ParsedRequest(String path, Map<String, String> headers, byte[] body) {
@@ -128,5 +145,42 @@ public class NonBlockingClient implements Client {
         }
 
         return new ParsedRequest(path, headers, body);
+    }
+
+    // Accumulates a length-prefixed response: [len:int][bytes...]
+    private static final class ResponseAccumulator {
+        private final byte[] lenPrefix = new byte[4];
+        private int lenPos = 0;
+        private int bodyLen = -1;
+        private byte[] body;
+        private int bodyPos = 0;
+
+        void append(ByteBuffer src) {
+            // Fill length prefix first
+            if (lenPos < 4 && src.hasRemaining()) {
+                int need = 4 - lenPos;
+                int n = Math.min(need, src.remaining());
+                src.get(lenPrefix, lenPos, n);
+                lenPos += n;
+                if (lenPos == 4) {
+                    bodyLen = ByteBuffer.wrap(lenPrefix).getInt();
+                    body = new byte[bodyLen];
+                }
+            }
+            // Fill body
+            if (body != null && src.hasRemaining() && bodyPos < body.length) {
+                int n = Math.min(src.remaining(), body.length - bodyPos);
+                src.get(body, bodyPos, n);
+                bodyPos += n;
+            }
+        }
+
+        boolean isComplete() {
+            return body != null && bodyPos >= body.length;
+        }
+
+        byte[] getBody() {
+            return body != null ? body : new byte[0];
+        }
     }
 }

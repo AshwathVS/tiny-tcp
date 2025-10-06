@@ -36,19 +36,21 @@ public record ReadCompletionHandler(
 
             requestHandler.handleRequest(accumulator)
                 .thenAccept(response -> {
-                    ByteBuffer writeBuffer;
-                    final int responseSize = response.size();
+                    final int bodySize = response.size();
+                    final int totalSize = 4 /*length prefix*/ + bodySize;
                     final int poolBufferSize = bufferPool.getBufferSize();
 
+                    ByteBuffer writeBuffer;
                     // choose buffer: pool or temp
-                    if (responseSize <= poolBufferSize) {
+                    if (totalSize <= poolBufferSize) {
                         writeBuffer = bufferPool.get();
                     } else {
-                        writeBuffer = ByteBuffer.allocate(responseSize);
+                        writeBuffer = ByteBuffer.allocate(totalSize);
                     }
 
                     writeBuffer.clear();
-                    writeBuffer.put(response.getBytes());
+                    writeBuffer.putInt(bodySize); // length prefix
+                    writeBuffer.put(response.getBytes()); // body
                     writeBuffer.flip();
 
                     channel.write(
