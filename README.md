@@ -6,12 +6,14 @@ The format for client input is: PATH | header1=value1;header2=value2 (optional) 
 
 Example:
 ```
-Connected to the target VM, address: '127.0.0.1:61635', transport: 'socket'
-/hello | |ashwath
-11:07:33.042 [main] INFO client.NonBlockingClient -- Response from server: Hello from server, your body was: [ashwath] 
+/hello|Auth=12345678|my_payload
+11:37:56.182 [main] INFO client.NonBlockingClient -- Response from server: Hello from server, your body was: [my_payload], your headers was: [{Keep-Alive=true, Auth=12345678}]
 
-/delay | Delay=500
-11:07:38.960 [main] INFO client.NonBlockingClient -- Response from server: Waited for 500ms
+/delay|Delay=500
+11:38:07.501 [main] INFO client.NonBlockingClient -- Response from server: Waited for 500ms
+
+/delay|Delay=1000
+11:38:17.374 [main] INFO client.NonBlockingClient -- Response from server: Waited for 1000ms
 ```
 
 
