@@ -1,0 +1,11 @@
+{
+  "serverProperties": {
+    "port": 9998,
+    "maxWorkerThreads": 10
+  },
+  "byteBufferProperties": {
+    "minPoolSize": 20,
+    "bufferSize": 1024,
+    "maxPoolSize": 100
+  }
+}
