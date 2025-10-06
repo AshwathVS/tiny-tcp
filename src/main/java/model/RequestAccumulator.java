@@ -1,6 +1,5 @@
 package model;
 
-import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 
 /**
@@ -12,54 +11,80 @@ import java.nio.ByteBuffer;
  *
  */
 public class RequestAccumulator {
-    private final ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-    private Integer headerLength = null;
-    private Integer bodyLength = null;
+    // First 8 bytes carry lengths: [headerLen:int][bodyLen:int]
+    private final byte[] headerPrefix = new byte[8];
+    private int headerPos = 0; // how many of the first 8 bytes we have
+
+    private int headerLength = -1;
+    private int bodyLength = -1;
+
+    // After both lengths are known, we allocate a single payload buffer of size headerLen + bodyLen
+    private byte[] payload;
+    private int payloadWritePos = 0;
 
     public void append(ByteBuffer buffer) {
-        byte[] bytes = new byte[buffer.remaining()];
-        buffer.get(bytes);
-        outputStream.write(bytes, 0, bytes.length);
+        // 1) Fill the 8-byte header prefix first
+        if (headerPos < 8) {
+            int need = 8 - headerPos;
+            int n = Math.min(need, buffer.remaining());
+            buffer.get(headerPrefix, headerPos, n);
+            headerPos += n;
+
+            // parse header length if first 4 bytes available
+            if (headerLength == -1 && headerPos >= 4) {
+                headerLength = ByteBuffer.wrap(headerPrefix, 0, 4).getInt();
+            }
+            // parse body length and allocate payload if both ints available
+            if (bodyLength == -1 && headerPos >= 8) {
+                bodyLength = ByteBuffer.wrap(headerPrefix, 4, 4).getInt();
+                payload = new byte[headerLength + bodyLength];
+            }
+        }
+
+        // 2) Copy remaining bytes into payload (if allocated)
+        if (payload != null && buffer.hasRemaining() && payloadWritePos < payload.length) {
+            int n = Math.min(buffer.remaining(), payload.length - payloadWritePos);
+            buffer.get(payload, payloadWritePos, n);
+            payloadWritePos += n;
+        }
     }
 
     public boolean isHeaderLengthRead() {
-        return outputStream.size() >= 4;
+        return headerPos >= 4; // first integer value is header length
     }
 
     public void parseHeaderLength() {
-        if (headerLength == null && isHeaderLengthRead()) {
-            ByteBuffer buf = ByteBuffer.wrap(outputStream.toByteArray(), 0, 4);
-            headerLength = buf.getInt();
+        if (headerLength == -1 && isHeaderLengthRead()) {
+            headerLength = ByteBuffer.wrap(headerPrefix, 0, 4).getInt();
         }
     }
 
     public boolean isBodyLengthRead() {
-        return outputStream.size() >= 8;
+        return headerPos >= 8; // first integer value is header length and the second one is body length (total 2 integers, 8 bytes)
     }
 
     public void parseBodyLength() {
-        if (bodyLength == null && isBodyLengthRead()) {
-            ByteBuffer buf = ByteBuffer.wrap(outputStream.toByteArray(), 4, 4);
-            bodyLength = buf.getInt();
+        if (bodyLength == -1 && isBodyLengthRead()) {
+            bodyLength = ByteBuffer.wrap(headerPrefix, 4, 4).getInt();
+            if (payload == null) {
+                payload = new byte[headerLength + bodyLength];
+            }
         }
     }
 
     public boolean isComplete() {
-        return headerLength != null && bodyLength != null &&
-            outputStream.size() >= 8 + headerLength + bodyLength;
+        return headerLength >= 0 && bodyLength >= 0 && payload != null && payloadWritePos >= payload.length;
     }
 
     public byte[] extractHeaderBytes() {
-        byte[] all = outputStream.toByteArray();
         byte[] header = new byte[headerLength];
-        System.arraycopy(all, 8, header, 0, headerLength);
+        System.arraycopy(payload, 0, header, 0, headerLength);
         return header;
     }
 
     public byte[] extractBodyBytes() {
-        byte[] all = outputStream.toByteArray();
         byte[] body = new byte[bodyLength];
-        System.arraycopy(all, 8 + headerLength, body, 0, bodyLength);
+        System.arraycopy(payload, headerLength, body, 0, bodyLength);
         return body;
     }
 }

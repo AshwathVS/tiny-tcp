@@ -54,7 +54,7 @@ public class RequestParser implements IRequestParser {
         return ServerRequest.builder()
             .path(path)
             .headers(headers)
-            .requestBody(new ByteArrayInputStream(bodyBytes))
+            .requestBody(bodyBytes)
             .build();
     }
 }
