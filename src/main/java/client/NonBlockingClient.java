@@ -71,7 +71,7 @@ public class NonBlockingClient implements Client {
         ByteBuffer frame = RequestEncoder.encode(req.path, req.headers, req.body);
 
         socketChannel.write(frame);
-        // Prepare to read a length-prefixed response next
+        // Prepare to read a response framed as [status:int][len:int][body]
         key.attach(new ResponseAccumulator());
         key.interestOps(SelectionKey.OP_READ);
         return true;
@@ -98,7 +98,7 @@ public class NonBlockingClient implements Client {
 
         if (acc.isComplete()) {
             String response = new String(acc.getBody(), StandardCharsets.UTF_8);
-            log.info("Response from server: {}", response);
+            log.info("Response from server (status {}): {}", acc.getStatus(), response);
             key.attach(null);
             key.interestOps(SelectionKey.OP_WRITE);
         } else {
@@ -147,23 +147,26 @@ public class NonBlockingClient implements Client {
         return new ParsedRequest(path, headers, body);
     }
 
-    // Accumulates a length-prefixed response: [len:int][bytes...]
+    // Accumulates a response framed as: [status:int][len:int][bytes...]
     private static final class ResponseAccumulator {
-        private final byte[] lenPrefix = new byte[4];
-        private int lenPos = 0;
-        private int bodyLen = -1;
+        private final byte[] prefix = new byte[8];
+        private int prefixPos = 0;
+        private int status = -1;
         private byte[] body;
         private int bodyPos = 0;
 
         void append(ByteBuffer src) {
-            // Fill length prefix first
-            if (lenPos < 4 && src.hasRemaining()) {
-                int need = 4 - lenPos;
+            // Fill 8-byte prefix first
+            if (prefixPos < 8 && src.hasRemaining()) {
+                int need = 8 - prefixPos;
                 int n = Math.min(need, src.remaining());
-                src.get(lenPrefix, lenPos, n);
-                lenPos += n;
-                if (lenPos == 4) {
-                    bodyLen = ByteBuffer.wrap(lenPrefix).getInt();
+                src.get(prefix, prefixPos, n);
+                prefixPos += n;
+                if (prefixPos >= 4 && status == -1) {
+                    status = ByteBuffer.wrap(prefix, 0, 4).getInt();
+                }
+                if (prefixPos == 8) {
+                    int bodyLen = ByteBuffer.wrap(prefix, 4, 4).getInt();
                     body = new byte[bodyLen];
                 }
             }
@@ -177,6 +180,10 @@ public class NonBlockingClient implements Client {
 
         boolean isComplete() {
             return body != null && bodyPos >= body.length;
+        }
+
+        int getStatus() {
+            return status;
         }
 
         byte[] getBody() {

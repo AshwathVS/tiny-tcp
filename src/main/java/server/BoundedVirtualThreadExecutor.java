@@ -24,18 +24,19 @@ public class BoundedVirtualThreadExecutor extends AbstractExecutorService {
     public void execute(Runnable command) {
         if (isShutdown) throw new RejectedExecutionException("Executor is shut down");
 
-        try {
-            semaphore.acquire();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RejectedExecutionException("Interrupted while waiting for permit", e);
-        }
-
+        // Do not block the caller (often an I/O completion thread).
+        // Instead, submit a virtual thread that acquires the permit and runs the task.
         delegate.execute(() -> {
+            boolean acquired = false;
             try {
+                semaphore.acquire();
+                acquired = true;
                 command.run();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RejectedExecutionException("Interrupted while waiting for permit", e);
             } finally {
-                semaphore.release();
+                if (acquired) semaphore.release();
             }
         });
     }

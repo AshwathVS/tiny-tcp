@@ -19,6 +19,7 @@ public record ReadCompletionHandler(
     @Override
     public void completed(Integer bytesRead, RequestAccumulator accumulator) {
         if (bytesRead == -1) {
+            ByteBufferPool.getInstance().returnBuffer(readBuffer);
             closeSocket();
             return;
         }
@@ -34,10 +35,11 @@ public record ReadCompletionHandler(
         if (accumulator.isComplete()) {
             final ByteBufferPool bufferPool = ByteBufferPool.getInstance();
 
-            requestHandler.handleRequest(accumulator)
+            requestHandler
+                .handleRequest(accumulator)
                 .thenAccept(response -> {
-                    final int bodySize = response.size();
-                    final int totalSize = 4 /*length prefix*/ + bodySize;
+                    final int payloadSize = response.size();
+                    final int totalSize = 4 /* response status */ + 4 /* payload length */ + payloadSize;
                     final int poolBufferSize = bufferPool.getBufferSize();
 
                     ByteBuffer writeBuffer;
@@ -49,7 +51,8 @@ public record ReadCompletionHandler(
                     }
 
                     writeBuffer.clear();
-                    writeBuffer.putInt(bodySize); // length prefix
+                    writeBuffer.putInt(response.statusCode()); // status code
+                    writeBuffer.putInt(payloadSize); // length prefix
                     writeBuffer.put(response.getBytes()); // body
                     writeBuffer.flip();
 

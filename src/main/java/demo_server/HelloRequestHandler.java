@@ -11,6 +11,6 @@ public class HelloRequestHandler implements IRequestRouteHandler {
     public CompletableFuture<InternalServerResponse> handleRequest(ServerRequest serverRequest) {
         var requestBody = new String(serverRequest.requestBody());
         var requestHeaders = serverRequest.headers();
-        return CompletableFuture.completedFuture(new InternalServerResponse(("Hello from server, your body was: [%s], your headers was: [%s]".formatted(requestBody, requestHeaders)).getBytes()));
+        return CompletableFuture.completedFuture(new InternalServerResponse(200, ("Hello from server, your body was: [" + requestBody + "], your headers was: [" + requestHeaders + "]").getBytes()));
     }
 }

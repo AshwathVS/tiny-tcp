@@ -15,6 +15,7 @@ public class DelayRequestHandler implements IRequestRouteHandler {
         } catch (InterruptedException e) {
             // do nothing
         }
-        return CompletableFuture.completedFuture(new InternalServerResponse(("Waited for " + delay + "ms").getBytes()));
+
+        return CompletableFuture.completedFuture(new InternalServerResponse(200, ("Waited for " + delay + "ms").getBytes()));
     }
 }

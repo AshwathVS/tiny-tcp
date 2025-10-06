@@ -6,10 +6,14 @@ public record ServerResponse(
     boolean stayAlive
 ) {
     public byte[] getBytes() {
-        return internalServerResponse.responseBody();
+        return internalServerResponse.getResponseBody();
     }
 
     public int size() {
-        return internalServerResponse.responseBody().length;
+        return internalServerResponse.getResponseBody().length;
+    }
+
+    public int statusCode() {
+        return internalServerResponse.getStatusCode();
     }
 }

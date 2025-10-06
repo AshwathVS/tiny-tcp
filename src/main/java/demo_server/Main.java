@@ -32,18 +32,21 @@ public class Main {
         requestConfiguration.addHandler("/delay", new DelayRequestHandler());
 
         var latch = new CountDownLatch(1);
-        try (var server = new AsyncServer(
+        try (
+            var server = new AsyncServer(
                 config,
                 new RequestHandler(
-                        new RequestParser(),
-                        requestConfiguration,
-                        new BoundedVirtualThreadExecutor(config.serverProperties().maxWorkerThreads())
-                )
-        )) {
+                    new RequestParser(),
+                    requestConfiguration,
+                    new BoundedVirtualThreadExecutor(config.serverProperties().maxWorkerThreads())))
+        ) {
             // graceful shutdown
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 try {
                     log.info("Shutting down server...");
+                    server.close();
+                } catch (IOException e) {
+                    // do nothing
                 } finally {
                     latch.countDown();
                 }

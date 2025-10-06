@@ -1,11 +1,12 @@
 {
   "serverProperties": {
     "port": 9998,
-    "maxWorkerThreads": 10
+    "maxWorkerThreads": 100,
+    "connectionIdleTimeoutMs": 30000
   },
   "byteBufferProperties": {
-    "minPoolSize": 20,
+    "minPoolSize": 100,
     "bufferSize": 1024,
-    "maxPoolSize": 100
+    "maxPoolSize": 1000
   }
 }

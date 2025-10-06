@@ -1,12 +1,14 @@
 package server;
 
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import model.ApplicationConfig;
 
 import java.nio.ByteBuffer;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
+@Slf4j
 public class ByteBufferPool {
     private static ByteBufferPool instance;
 
@@ -23,6 +25,16 @@ public class ByteBufferPool {
         }
 
         instance = new ByteBufferPool(applicationConfig);
+        new Thread(() -> {
+            while (true) {
+                try {
+                    Thread.sleep(1000);
+                    log.debug("ByteBufferPool Size: {}", instance.byteBuffers.size());
+                } catch (InterruptedException e) {
+                    // do nothing
+                }
+            }
+        }).start();
     }
 
     private final LinkedBlockingQueue<ByteBuffer> byteBuffers;
@@ -36,7 +48,7 @@ public class ByteBufferPool {
 
     private ByteBufferPool(ApplicationConfig config) {
         this.bufferSize = config.byteBufferProperties().bufferSize();
-        this.maxPoolSize = config.byteBufferProperties().maxPoolSize();
+        this.maxPoolSize = (int) (config.byteBufferProperties().maxPoolSize() * 1.25); // keeping a 25% extra for request spike
 
         byteBuffers = new LinkedBlockingQueue<>(this.maxPoolSize);
 
@@ -55,7 +67,7 @@ public class ByteBufferPool {
         }
 
         if (totalBufferCreated.get() < maxPoolSize) {
-            synchronized (this) {
+            synchronized (byteBuffers) {
                 if (totalBufferCreated.get() < maxPoolSize) {
                     totalBufferCreated.incrementAndGet();
                     return ByteBuffer.allocate(bufferSize);
@@ -63,12 +75,9 @@ public class ByteBufferPool {
             }
         }
 
-        try {
-            return byteBuffers.take();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException(e);
-        }
+        // Do NOT block I/O completion threads here; allocate a temporary buffer.
+        // It will be GC'ed if the pool is full upon returnBuffer().
+        return ByteBuffer.allocate(bufferSize);
     }
 
     @SuppressWarnings("java:S899")

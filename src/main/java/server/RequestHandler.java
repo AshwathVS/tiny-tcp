@@ -11,6 +11,7 @@ import server.interfaces.IRequestRouteConfiguration;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public record RequestHandler(IRequestParser requestParser, IRequestRouteConfiguration requestRouteConfiguration, ExecutorService executorService) implements IRequestHandler {
@@ -27,13 +28,21 @@ public record RequestHandler(IRequestParser requestParser, IRequestRouteConfigur
             .thenApply(internalServerResponse -> new ServerResponse(requestContext, internalServerResponse, stayAlive))
             .exceptionally(ex -> {
                 log.error(ex.getMessage(), ex);
-                var internalServerResponse = new InternalServerResponse(BASE_ERROR_RESPONSE);
-                return new ServerResponse(requestContext, internalServerResponse, false);
+                var internalServerResponse = new InternalServerResponse(500, BASE_ERROR_RESPONSE);
+                return new ServerResponse(requestContext, internalServerResponse, stayAlive);
             });
     }
 
     @Override
     public void close() {
         this.executorService.shutdown();
+        try {
+            if (!this.executorService.awaitTermination(5, TimeUnit.SECONDS)) {
+                this.executorService.shutdownNow();
+            }
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            this.executorService.shutdownNow();
+        }
     }
 }
